@@ -1,6 +1,6 @@
 import { userService } from './userService';
 import { paymentService } from './paymentService';
-import { SparkClient } from '@buildonspark/spark-sdk';
+import { SparkWallet } from '@buildonspark/spark-sdk';
 
 export interface UmaLookupResponse {
   callback: string;
@@ -11,6 +11,9 @@ export interface UmaLookupResponse {
   payerData: any;
   umaVersion: string;
   commentAllowed: number;
+  payeeData?: {
+    chains: Record<string, any>;
+  };
 }
 
 export interface UmaPayResponse {
@@ -28,11 +31,41 @@ export interface UmaPayResponse {
 
 export class UmaService {
   private baseUrl: string;
-  private sparkClient: SparkClient;
+  private sparkWallet: any = null;
+  private isInitializing: boolean = false;
 
   constructor(baseUrl: string) {
     this.baseUrl = baseUrl;
-    this.sparkClient = new SparkClient();
+  }
+
+  /**
+   * Initialize Spark Wallet (lazy initialization)
+   */
+  private async initializeSparkWallet() {
+    if (this.sparkWallet) {
+      return this.sparkWallet;
+    }
+
+    if (this.isInitializing) {
+      // Wait for initialization to complete
+      while (this.isInitializing) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+      return this.sparkWallet;
+    }
+
+    try {
+      this.isInitializing = true;
+      const { wallet } = await SparkWallet.initialize(process.env.SPARK_SEED);
+      this.sparkWallet = wallet;
+      console.log('✓ Spark Wallet initialized successfully');
+      return this.sparkWallet;
+    } catch (error) {
+      console.error('Failed to initialize Spark Wallet:', error);
+      throw error;
+    } finally {
+      this.isInitializing = false;
+    }
   }
 
   /**
@@ -43,6 +76,9 @@ export class UmaService {
     if (!user) {
       return null;
     }
+
+    // Get user's multi-chain addresses
+    const chains = user.id ? userService.getFormattedAddresses(user.id) : {};
 
     return {
       callback: `${this.baseUrl}/.well-known/lnurlp/${username}`,
@@ -67,6 +103,9 @@ export class UmaService {
       },
       umaVersion: '1.0',
       commentAllowed: 255,
+      payeeData: {
+        chains,
+      },
     };
   }
 
@@ -135,12 +174,15 @@ export class UmaService {
     receiverSparkPubkey?: string
   ): Promise<string> {
     try {
+      // Initialize Spark Wallet if not already initialized
+      const wallet = await this.initializeSparkWallet();
+
       // Create Lightning invoice with Spark address embedded
       // The includeSparkAddress parameter embeds a 36-byte string (SPK:identitypubkey)
       // in the fallback address field of the bolt11 invoice
-      const invoice = await this.sparkClient.createLightningInvoice({
-        amount_msat: amountMsats,
-        description: `Payment to ${description}`,
+      const lightningReceiveRequest = await wallet.createLightningInvoice({
+        amountSats: amountMsats,
+        memo: `Payment to ${description}`,
         // Embed Spark address in the invoice fallback field
         // Format: SPK:identitypubkey (36 bytes total)
         includeSparkAddress: true,
@@ -149,7 +191,7 @@ export class UmaService {
         ...(receiverSparkPubkey && { receiverIdentityPubkey: receiverSparkPubkey }),
       });
 
-      return invoice.bolt11;
+      return lightningReceiveRequest.invoice.encodedInvoice;
     } catch (error) {
       console.error('Error creating Spark invoice:', error);
       throw error;

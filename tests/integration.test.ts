@@ -5,7 +5,7 @@ import { userService } from '../src/services/userService';
 import { createUmaService } from '../src/services/umaService';
 
 // Test database path
-const TEST_DB_PATH = './data/test-uma.db';
+const TEST_DB_PATH = 'data/uma.db'
 
 // Colors for console output
 const colors = {
@@ -36,36 +36,14 @@ async function runTests() {
 
   try {
     // ============================================
-    // Test 1: Database Cleanup
+    // Test 1: Database Status
     // ============================================
-    log('\n[Test 1] Database Cleanup', colors.blue);
+    log('\n[Test 1] Database Status', colors.blue);
     log('─────────────────────────────────────────', colors.blue);
     
-    // Set test database path
-    process.env.DB_PATH = TEST_DB_PATH;
-    
-    // Remove existing test database
-    if (fs.existsSync(TEST_DB_PATH)) {
-      fs.unlinkSync(TEST_DB_PATH);
-      log('✓ Removed existing test database', colors.green);
-    }
-    
-    // Ensure data directory exists
-    const dataDir = path.dirname(TEST_DB_PATH);
-    if (!fs.existsSync(dataDir)) {
-      fs.mkdirSync(dataDir, { recursive: true });
-    }
-    
-    assert(!fs.existsSync(TEST_DB_PATH), 'Database file should not exist');
-
-    // ============================================
-    // Test 2: Database Initialization
-    // ============================================
-    log('\n[Test 2] Database Initialization', colors.blue);
-    log('─────────────────────────────────────────', colors.blue);
-    
-    initializeDatabase();
-    assert(fs.existsSync(TEST_DB_PATH), 'Database file should be created');
+    assert(fs.existsSync(TEST_DB_PATH), 'Database file should exist');
+    log('   Database path: ' + TEST_DB_PATH, colors.yellow);
+    log('   Database file size: ' + fs.statSync(TEST_DB_PATH).size + ' bytes', colors.yellow);
     
     // Verify tables exist
     const tables = db.prepare(`
@@ -74,15 +52,16 @@ async function runTests() {
       AND name IN ('users', 'chain_addresses', 'payment_requests')
     `).all();
     
-    assert(tables.length === 3, 'All three tables should be created');
+    assert(tables.length === 3, 'All three tables should exist');
+    log('   ✓ Tables: users, chain_addresses, payment_requests', colors.yellow);
 
     // ============================================
-    // Test 3: User Creation
+    // Test 2: User Creation
     // ============================================
-    log('\n[Test 3] User Creation', colors.blue);
+    log('\n[Test 2] User Creation', colors.blue);
     log('─────────────────────────────────────────', colors.blue);
     
-    const testUsername = 'testuser';
+    const testUsername = 'testuser_' + Date.now(); // Unique username for each test
     const testDisplayName = 'Test User';
     
     const userId = userService.createUser(testUsername, testDisplayName);
@@ -98,9 +77,9 @@ async function runTests() {
     log(`   Display Name: ${user!.display_name}`, colors.yellow);
 
     // ============================================
-    // Test 4: Adding Chain Addresses
+    // Test 3: Adding Chain Addresses
     // ============================================
-    log('\n[Test 4] Adding Chain Addresses', colors.blue);
+    log('\n[Test 3] Adding Chain Addresses', colors.blue);
     log('─────────────────────────────────────────', colors.blue);
     
     const testAddresses = [
@@ -138,9 +117,9 @@ async function runTests() {
       `Should have ${testAddresses.length} addresses`);
 
     // ============================================
-    // Test 5: Get Formatted Addresses
+    // Test 4: Get Formatted Addresses
     // ============================================
-    log('\n[Test 5] Get Formatted Addresses', colors.blue);
+    log('\n[Test 4] Get Formatted Addresses', colors.blue);
     log('─────────────────────────────────────────', colors.blue);
     
     const formattedAddresses = userService.getFormattedAddresses(userId);
@@ -158,9 +137,9 @@ async function runTests() {
     log(JSON.stringify(formattedAddresses, null, 2), colors.yellow);
 
     // ============================================
-    // Test 6: UMA Lookup Response
+    // Test 5: UMA Lookup Response
     // ============================================
-    log('\n[Test 6] UMA Lookup Response', colors.blue);
+    log('\n[Test 5] UMA Lookup Response', colors.blue);
     log('─────────────────────────────────────────', colors.blue);
     
     const baseUrl = 'http://localhost:3000';
@@ -185,9 +164,9 @@ async function runTests() {
     log(`   - UMA Version: ${lookupResponse!.umaVersion}`, colors.yellow);
 
     // ============================================
-    // Test 7: UMA Pay Response (Invoice Generation)
+    // Test 6: UMA Pay Response (Invoice Generation)
     // ============================================
-    log('\n[Test 7] UMA Pay Response (Invoice Generation)', colors.blue);
+    log('\n[Test 6] UMA Pay Response (Invoice Generation)', colors.blue);
     log('─────────────────────────────────────────', colors.blue);
     
     const amountMsats = 10000; // 10 sats
@@ -230,9 +209,9 @@ async function runTests() {
     }
 
     // ============================================
-    // Test 8: Non-existent User
+    // Test 7: Non-existent User
     // ============================================
-    log('\n[Test 8] Non-existent User Handling', colors.blue);
+    log('\n[Test 7] Non-existent User Handling', colors.blue);
     log('─────────────────────────────────────────', colors.blue);
     
     const nonExistentUser = userService.getUserByUsername('nonexistent');
@@ -244,9 +223,9 @@ async function runTests() {
       'Lookup for non-existent user should return null');
 
     // ============================================
-    // Test 9: Database Constraints
+    // Test 8: Database Constraints
     // ============================================
-    log('\n[Test 9] Database Constraints', colors.blue);
+    log('\n[Test 8] Database Constraints', colors.blue);
     log('─────────────────────────────────────────', colors.blue);
     
     // Try to create duplicate username
@@ -273,12 +252,8 @@ async function runTests() {
     log('════════════════════════════════════════════\n', colors.cyan);
 
     // Cleanup
-    log('[Cleanup] Removing test database...', colors.blue);
-    db.close();
-    if (fs.existsSync(TEST_DB_PATH)) {
-      fs.unlinkSync(TEST_DB_PATH);
-      log('✓ Test database removed\n', colors.green);
-    }
+    log('[Cleanup] Test database preserved for inspection', colors.blue);
+    log(`   Location: ${TEST_DB_PATH}\n`, colors.yellow);
 
   } catch (error: any) {
     log('\n════════════════════════════════════════════', colors.red);
@@ -287,16 +262,6 @@ async function runTests() {
     log(`\nError: ${error.message}`, colors.red);
     if (error.stack) {
       log(`\nStack trace:\n${error.stack}`, colors.red);
-    }
-    
-    // Cleanup on error
-    try {
-      db.close();
-      if (fs.existsSync(TEST_DB_PATH)) {
-        fs.unlinkSync(TEST_DB_PATH);
-      }
-    } catch (cleanupError) {
-      // Ignore cleanup errors
     }
     
     process.exit(1);

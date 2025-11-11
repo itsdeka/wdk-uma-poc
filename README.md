@@ -46,6 +46,30 @@ cd wdk-uma-poc
 # Install dependencies
 npm install
 ```
+
+### Add Users
+
+Add a new user with default multi-chain addresses:
+
+```bash
+# Interactive mode
+npm run add-user
+
+# With username
+npm run add-user bob
+
+# With username and display name
+npm run add-user bob "Bob Johnson"
+
+# Or use the bash script directly
+./scripts/add-user.sh alice "Alice Smith"
+```
+
+This will create a user with default addresses for:
+- Spark (identity pubkey)
+- Ethereum, Polygon, Arbitrum, Optimism, Base
+- Solana Mainnet
+
 ### Run Development Server
 
 ```bash

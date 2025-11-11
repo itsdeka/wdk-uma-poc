@@ -16,6 +16,19 @@ export const db = new Database(DB_PATH);
 // Enable foreign keys
 db.pragma('foreign_keys = ON');
 
+// Check if database is initialized (has tables)
+function isDatabaseInitialized(): boolean {
+  try {
+    const tables = db.prepare(`
+      SELECT name FROM sqlite_master 
+      WHERE type='table' AND name='users'
+    `).get();
+    return tables !== undefined;
+  } catch {
+    return false;
+  }
+}
+
 // Initialize schema
 export function initializeDatabase() {
   const schemaPath = path.join(__dirname, 'schema.sql');
@@ -23,6 +36,12 @@ export function initializeDatabase() {
   
   db.exec(schema);
   console.log('Database initialized successfully');
+}
+
+// Auto-initialize database if tables don't exist
+if (!isDatabaseInitialized()) {
+  console.log('Database tables not found, initializing...');
+  initializeDatabase();
 }
 
 // User operations
