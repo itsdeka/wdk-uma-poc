@@ -7,15 +7,25 @@ export class PaymentService {
     amountMsats: number,
     currency?: string,
     invoice?: string
-  ): number {
-    const result = paymentQueries.create.run(
-      userId,
-      nonce,
-      amountMsats,
-      currency,
-      invoice
-    );
-    return result.lastInsertRowid as number;
+  ): number | null {
+    try {
+      const result = paymentQueries.create.run(
+        userId,
+        nonce,
+        amountMsats,
+        currency,
+        invoice
+      );
+      return result.lastInsertRowid as number;
+    } catch (error: any) {
+      // Check if it's a duplicate nonce error
+      if (error.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+        console.warn(`Duplicate nonce detected: ${nonce}`);
+        return null;
+      }
+      // Re-throw other errors
+      throw error;
+    }
   }
 
   getPaymentRequestByNonce(nonce: string): PaymentRequest | undefined {

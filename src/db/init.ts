@@ -21,7 +21,7 @@ if (!exampleUser) {
     { chain_name: 'arbitrum', address: '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb' },
     { chain_name: 'optimism', address: '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb' },
     { chain_name: 'base', address: '0x742d35Cc6634C0532925a3b844Bc9e7595f0bEb' },
-    { chain_name: 'solana-mainnet', address: 'DYw8jCTfwHNRJhhmFcbXvVDTqWMEVFBX6ZKUmG5CNSKK' },
+    { chain_name: 'solana', address: 'DYw8jCTfwHNRJhhmFcbXvVDTqWMEVFBX6ZKUmG5CNSKK' },
   ];
   
   for (const addr of exampleAddresses) {

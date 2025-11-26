@@ -31,7 +31,7 @@ const umaService = createUmaService(BASE_URL);
  */
 app.get('/.well-known/lnurlp/:username', async (req: Request, res: Response) => {
   const { username } = req.params;
-  const { amount, nonce, currency } = req.query;
+  const { amount, nonce, currency, settlementLayer, assetIdentifier } = req.query;
 
   try {
     // Case 1: Lookup request (no amount parameter)
@@ -68,7 +68,9 @@ app.get('/.well-known/lnurlp/:username', async (req: Request, res: Response) => 
       username,
       amountMsats,
       nonce as string,
-      currency as string | undefined
+      currency as string | undefined,
+      settlementLayer as string | undefined,
+      assetIdentifier as string | undefined
     );
 
     if (!payResponse) {
@@ -79,8 +81,25 @@ app.get('/.well-known/lnurlp/:username', async (req: Request, res: Response) => 
     }
 
     return res.json(payResponse);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error handling UMA request:', error);
+    
+    // Handle duplicate nonce error
+    if (error.message === 'DUPLICATE_NONCE') {
+      return res.status(409).json({
+        status: 'ERROR',
+        reason: 'Duplicate payment request. This nonce has already been used.',
+      });
+    }
+    
+    // Handle invalid settlement layer
+    if (error.message?.includes('Address not found for settlement layer')) {
+      return res.status(400).json({
+        status: 'ERROR',
+        reason: 'Unsupported or invalid settlement layer. Check available settlement options from the lookup endpoint.',
+      });
+    }
+    
     return res.status(500).json({
       status: 'ERROR',
       reason: 'Internal server error',
@@ -126,6 +145,7 @@ app.listen(PORT, () => {
   console.log('Example requests:');
   console.log(`  Lookup: curl ${BASE_URL}/.well-known/lnurlp/alice`);
   console.log(`  Pay:    curl "${BASE_URL}/.well-known/lnurlp/alice?amount=1000&nonce=test123"`);
+  console.log(`  Pay (with settlement): curl "${BASE_URL}/.well-known/lnurlp/alice?amount=1000&currency=USD&nonce=test123&settlementLayer=polygon&assetIdentifier=USDT_POLYGON"`);
   console.log('');
 });
 
