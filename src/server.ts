@@ -49,12 +49,8 @@ app.get('/.well-known/lnurlp/:username', async (req: Request, res: Response) => 
     }
 
     // Case 2: Pay request (with amount parameter)
-    if (!nonce) {
-      return res.status(400).json({
-        status: 'ERROR',
-        reason: 'Missing required parameter: nonce',
-      });
-    }
+    // Auto-generate nonce if not provided (for replay attack prevention)
+    const paymentNonce = (nonce as string) || `${Date.now()}-${Math.random().toString(36).substring(2, 15)}`;
 
     const amountMsats = parseInt(amount as string, 10);
     if (isNaN(amountMsats) || amountMsats <= 0) {
@@ -67,7 +63,7 @@ app.get('/.well-known/lnurlp/:username', async (req: Request, res: Response) => 
     const payResponse = await umaService.generatePayResponse(
       username,
       amountMsats,
-      nonce as string,
+      paymentNonce,
       currency as string | undefined,
       settlementLayer as string | undefined,
       assetIdentifier as string | undefined
@@ -127,7 +123,8 @@ app.get('/', (req: Request, res: Response) => {
     description: 'A minimal UMA-compliant backend service with multi-chain support',
     endpoints: {
       uma_lookup: '/.well-known/lnurlp/{username}',
-      uma_pay: '/.well-known/lnurlp/{username}?amount=1000&nonce=abc123',
+      uma_pay: '/.well-known/lnurlp/{username}?amount=1000',
+      uma_pay_with_nonce: '/.well-known/lnurlp/{username}?amount=1000&nonce=abc123',
       health: '/health',
     },
     documentation: 'https://github.com/uma-universal-money-address/protocol',
@@ -144,8 +141,9 @@ app.listen(PORT, () => {
   console.log('');
   console.log('Example requests:');
   console.log(`  Lookup: curl ${BASE_URL}/.well-known/lnurlp/alice`);
-  console.log(`  Pay:    curl "${BASE_URL}/.well-known/lnurlp/alice?amount=1000&nonce=test123"`);
-  console.log(`  Pay (with settlement): curl "${BASE_URL}/.well-known/lnurlp/alice?amount=1000&currency=USD&nonce=test123&settlementLayer=polygon&assetIdentifier=USDT_POLYGON"`);
+  console.log(`  Pay (auto nonce): curl "${BASE_URL}/.well-known/lnurlp/alice?amount=1000"`);
+  console.log(`  Pay (custom nonce): curl "${BASE_URL}/.well-known/lnurlp/alice?amount=1000&nonce=test123"`);
+  console.log(`  Pay (with settlement): curl "${BASE_URL}/.well-known/lnurlp/alice?amount=1000&currency=USD&settlementLayer=polygon&assetIdentifier=USDT_POLYGON"`);
   console.log('');
 });
 
