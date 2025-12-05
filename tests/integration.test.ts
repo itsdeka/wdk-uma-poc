@@ -157,11 +157,31 @@ async function runTests() {
     assert(lookupResponse!.umaVersion === '1.0', 
       'UMA version should be 1.0');
     
+    // Check settlementOptions contains chains
+    assert(lookupResponse!.settlementOptions !== undefined, 
+      'Lookup response should contain settlementOptions');
+    assert(lookupResponse!.settlementOptions!.length > 0, 
+      'settlementOptions should not be empty');
+    
+    // Check for specific settlement layers
+    const settlementLayers = lookupResponse!.settlementOptions!.map(opt => opt.settlementLayer);
+    assert(settlementLayers.includes('spark'), 
+      'settlementOptions should include spark');
+    assert(settlementLayers.includes('ethereum') || settlementLayers.includes('polygon'), 
+      'settlementOptions should include at least one EVM chain');
+    
     log('   Lookup Response:', colors.yellow);
     log(`   - Callback: ${lookupResponse!.callback}`, colors.yellow);
     log(`   - Max Sendable: ${lookupResponse!.maxSendable}`, colors.yellow);
     log(`   - Min Sendable: ${lookupResponse!.minSendable}`, colors.yellow);
     log(`   - UMA Version: ${lookupResponse!.umaVersion}`, colors.yellow);
+    log('   - Settlement Options:', colors.yellow);
+    for (const option of lookupResponse!.settlementOptions!) {
+      log(`      • Layer: ${option.settlementLayer}`, colors.yellow);
+      for (const asset of option.assets) {
+        log(`        - Asset: ${asset.identifier}`, colors.yellow);
+      }
+    }
 
     // ============================================
     // Test 6: UMA Pay Response (Invoice Generation)
@@ -186,22 +206,18 @@ async function runTests() {
       assert(payResponse!.disposable === false, 
         'Invoice should not be disposable');
       
-      // Check payeeData contains chains
-      assert(payResponse!.payeeData.chains !== undefined, 
-        'payeeData should contain chains');
-      assert('spark' in payResponse!.payeeData.chains, 
-        'Spark address should be in payeeData');
-      assert('ethereum' in payResponse!.payeeData.chains, 
-        'Ethereum address should be in payeeData');
-      
+      // Pay response should NOT contain settlementOptions (only lookup response has those)
+      // It may contain settlement info if sender specified their choice
       log('   Pay Response:', colors.yellow);
       log(`   - Invoice: ${payResponse!.pr.substring(0, 50)}...`, colors.yellow);
       log(`   - Routes: ${JSON.stringify(payResponse!.routes)}`, colors.yellow);
       log(`   - Disposable: ${payResponse!.disposable}`, colors.yellow);
       log(`   - Success Message: ${payResponse!.successAction.message}`, colors.yellow);
-      log('   - Chains in payeeData:', colors.yellow);
-      for (const [chain, data] of Object.entries(payResponse!.payeeData.chains)) {
-        log(`      • ${chain}: ${JSON.stringify(data)}`, colors.yellow);
+      if (payResponse!.settlement) {
+        log(`   - Settlement Layer: ${payResponse!.settlement.layer}`, colors.yellow);
+        log(`   - Asset Identifier: ${payResponse!.settlement.assetIdentifier}`, colors.yellow);
+      } else {
+        log('   - No specific settlement requested (Lightning default)', colors.yellow);
       }
     } catch (error: any) {
       log(`   ⚠ Invoice generation failed (expected without Spark SDK): ${error.message}`, colors.yellow);
