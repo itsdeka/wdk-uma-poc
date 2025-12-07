@@ -58,100 +58,7 @@ async function initializeApp () {
 }
 
 // UMA Endpoint - Handles both lookup and pay requests
-fastify.get('/.well-known/lnurlp/:username', {
-  schema: {
-    description: 'UMA LNURL endpoint for user lookup and payment requests',
-    tags: ['UMA'],
-    params: {
-      type: 'object',
-      properties: {
-        username: {
-          type: 'string',
-          description: 'The UMA username (e.g., alice@example.com)'
-        }
-      }
-    },
-    querystring: {
-      type: 'object',
-      properties: {
-        amount: {
-          type: 'string',
-          description: 'Payment amount in millisats (for pay requests only)'
-        },
-        nonce: {
-          type: 'string',
-          description: 'Optional nonce for replay attack prevention (auto-generated if not provided)'
-        },
-        currency: {
-          type: 'string',
-          default: 'USD',
-          description: 'Currency code'
-        },
-        settlementLayer: {
-          type: 'string',
-          enum: ['ln', 'spark', 'polygon', 'ethereum', 'arbitrum', 'optimism', 'base', 'solana', 'plasma'],
-          description: 'Preferred settlement layer for payment'
-        },
-        assetIdentifier: {
-          type: 'string',
-          description: 'Asset identifier for the settlement layer (e.g., USDT_POLYGON)'
-        }
-      }
-    },
-    response: {
-      200: {
-        description: 'Successful response',
-        type: 'object',
-        properties: {
-          callback: {
-            type: 'string',
-            description: 'URL for payment execution'
-          },
-          maxSendable: {
-            type: 'number',
-            description: 'Maximum amount sendable in millisats'
-          },
-          minSendable: {
-            type: 'number',
-            description: 'Minimum amount sendable in millisats'
-          },
-          metadata: {
-            type: 'string',
-            description: 'LNURL metadata'
-          },
-          tag: {
-            type: 'string',
-            description: 'LNURL tag'
-          }
-        }
-      },
-      400: {
-        description: 'Bad request',
-        type: 'object',
-        properties: {
-          status: { type: 'string', example: 'ERROR' },
-          reason: { type: 'string' }
-        }
-      },
-      404: {
-        description: 'User not found',
-        type: 'object',
-        properties: {
-          status: { type: 'string', example: 'ERROR' },
-          reason: { type: 'string', example: 'User not found' }
-        }
-      },
-      409: {
-        description: 'Duplicate nonce',
-        type: 'object',
-        properties: {
-          status: { type: 'string', example: 'ERROR' },
-          reason: { type: 'string', example: 'Duplicate payment request. This nonce has already been used.' }
-        }
-      }
-    }
-  }
-}, async (req, reply) => {
+fastify.get('/.well-known/lnurlp/:username', async (req, reply) => {
   const { username } = req.params
   const { amount, nonce, currency, settlementLayer, assetIdentifier } = req.query
 
@@ -332,6 +239,7 @@ fastify.get('/', {
     notes: {
       authentication: 'Bearer token required for admin endpoints (API_KEY env var)',
       domains: 'Multi-tenant - each domain has isolated users',
+      uma_routing: 'Domain extracted from request hostname (multi-domain support)',
       spark_key: 'Optional for users - required for Lightning invoice generation',
       nonce: 'Optional - auto-generated if not provided',
       settlement: 'Supports Lightning (with Spark), blockchain payments'
