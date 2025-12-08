@@ -133,6 +133,32 @@ async function runTests () {
     assert(lnurlpResponse.settlementOptions[0].assets[0].identifier === 'btkn1...',
       'First asset identifier should be btkn1...')
 
+    // Verify multipliers compliance per UMA spec
+    const sparkMultipliers = lnurlpResponse.settlementOptions[0].assets[0].multipliers
+    assert(typeof sparkMultipliers === 'object' && sparkMultipliers !== null,
+      'multipliers should be an object')
+    assert(typeof sparkMultipliers.USD === 'number',
+      'multipliers.USD should be a number')
+    assert(Number.isInteger(sparkMultipliers.USD),
+      'multipliers.USD should be an integer')
+    assert(sparkMultipliers.USD === 1234,
+      'multipliers.USD value should be 1234')
+    assert(typeof sparkMultipliers.PHP === 'number',
+      'multipliers.PHP should be a number')
+    assert(Number.isInteger(sparkMultipliers.PHP),
+      'multipliers.PHP should be an integer')
+    assert(sparkMultipliers.PHP === 5678,
+      'multipliers.PHP value should be 5678')
+
+    // Verify ln settlement option multipliers
+    const lnMultipliers = lnurlpResponse.settlementOptions[1].assets[0].multipliers
+    assert(typeof lnMultipliers === 'object' && lnMultipliers !== null,
+      'ln multipliers should be an object')
+    assert(typeof lnMultipliers.USD === 'number',
+      'ln multipliers.USD should be a number')
+    assert(Number.isInteger(lnMultipliers.USD),
+      'ln multipliers.USD should be an integer')
+
     log('   Settlement Options:', colors.yellow)
     log(`   - Count: ${lnurlpResponse.settlementOptions.length}`, colors.yellow)
     log(`   - First layer: ${lnurlpResponse.settlementOptions[0].settlementLayer}`, colors.yellow)

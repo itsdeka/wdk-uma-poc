@@ -1,6 +1,7 @@
 const { userService } = require('./users')
 const { paymentService } = require('./payments')
 const { domainService } = require('./domains')
+const { marketRates } = require('./market-rates')
 const { SparkWallet } = require('@buildonspark/spark-sdk')
 
 /**
@@ -16,8 +17,13 @@ class UmaService {
   /**
    * Convert chain addresses to UMA-compliant settlement options
    * Creates identifiers like USDT_POLYGON, USDT_SOLANA, etc.
+   *
+   * Per UMA spec (Settlement.d.ts):
+   * - multipliers: "Estimated conversion rates from this asset to the currencies supported by
+   *   the receiver. The key is the currency code and the value is the multiplier
+   *   (how many of the smallest unit of this asset equals one unit of the currency)."
    */
-  buildSettlementOptions (chains) {
+  async buildSettlementOptions (chains) {
     const settlementOptions = []
 
     // Map of chain names (from database) to settlement layers and default assets
@@ -47,18 +53,8 @@ class UmaService {
       const identifier =
         layer === 'spark' ? chainData.address || chainData : `${asset}_${layer.toUpperCase()}`
 
-      // Calculate multipliers based on asset type
-      const multipliers = {}
-
-      if (asset === 'USDT') {
-        // USDT has 6 decimals: 1 USDT = 1,000,000 micro-USDT
-        multipliers.USD = 10000 // micro-USDT per cent
-        multipliers.SAT = 1000 // micro-USDT per sat
-      } else if (asset === 'BTC') {
-        // BTC in millisats: 1 BTC = 100,000,000,000 msats
-        multipliers.USD = 10000 // msats per cent (at $100k/BTC)
-        multipliers.SAT = 1000 // msats per sat
-      }
+      // Calculate multipliers using real-time market rates from Bitfinex
+      const multipliers = await marketRates.calculateMultipliers(asset)
 
       settlementOptions.push({
         settlementLayer: layer,
@@ -137,8 +133,22 @@ class UmaService {
     // Get user's multi-chain addresses
     const chains = user._id ? await userService.getFormattedAddresses(user._id) : {}
 
-    // Convert to UMA-compliant settlement options
-    const settlementOptions = this.buildSettlementOptions(chains)
+    // Convert to UMA-compliant settlement options (async - fetches real-time rates)
+    const settlementOptions = await this.buildSettlementOptions(chains)
+
+    // Calculate currency multiplier using real-time BTC price
+    // Per UMA spec: "Estimated millisats per smallest unit of this currency (eg. 1 cent in USD)"
+    // Formula: msats per cent = msats_per_btc / cents_per_btc
+    let usdMultiplier
+    try {
+      const btcPriceUsd = await marketRates.getBtcUsdPrice()
+      const centsPerBtc = btcPriceUsd * 100
+      const msatsPerBtc = 100000000000 // 100 billion msats per BTC
+      usdMultiplier = Math.round(msatsPerBtc / centsPerBtc)
+    } catch (error) {
+      console.warn('Using fallback BTC price for currency multiplier')
+      usdMultiplier = 10000 // ~$100k/BTC fallback
+    }
 
     // Define supported currencies
     const currencies = [
@@ -149,7 +159,7 @@ class UmaService {
         decimals: 2,
         minSendable: 1,
         maxSendable: 100000,
-        multiplier: 10000
+        multiplier: usdMultiplier
       }
     ]
 
@@ -268,10 +278,37 @@ class UmaService {
       console.log(`Payment request using settlement: ${assetIdentifier} on ${settlementLayer}`)
     }
 
+    // Calculate converted field per UMA spec
+    // Formula: invoiceAmount = (amount × multiplier) + fee
+    // Solving for amount: amount = (invoiceAmount - fee) / multiplier
+    const receiverFees = 0 // No receiver fees for now
+    const currencyCode = currency || 'USD'
+    const decimals = currencyCode === 'USD' ? 2 : 2 // Default to 2 decimals
+
+    // Determine the settlement asset based on settlement layer
+    const asset = (!settlementLayer || settlementLayer === 'ln' || settlementLayer === 'spark')
+      ? 'BTC'
+      : 'USDT'
+
+    // Get multiplier for the asset
+    const multipliers = await marketRates.calculateMultipliers(asset)
+    const multiplier = multipliers[currencyCode] || multipliers.USD || 10000
+
+    // Calculate amount in currency units (e.g., cents)
+    // amount = (invoiceAmount - fee) / multiplier
+    const amountInCurrencyUnits = Math.round((amountMsats - receiverFees) / multiplier)
+
     const response = {
       pr: paymentRequest,
       routes: [],
       settlement: settlementInfo,
+      converted: {
+        amount: amountInCurrencyUnits,
+        currencyCode,
+        decimals,
+        multiplier,
+        fee: receiverFees
+      },
       disposable: false,
       successAction: {
         tag: 'message',
