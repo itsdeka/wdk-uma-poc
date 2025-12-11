@@ -33,12 +33,10 @@ class PaymentService {
 
       return result.insertedId
     } catch (error) {
-      // Check if it's a duplicate nonce error
       if (error.code === 11000 && error.keyPattern && error.keyPattern.nonce) {
         console.warn(`Duplicate nonce detected: ${nonce}`)
         return null
       }
-      // Re-throw other errors
       throw error
     }
   }

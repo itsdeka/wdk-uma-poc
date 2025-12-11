@@ -1,21 +1,19 @@
 const { getDatabase } = require('../db/database')
+const CURRENCIES = require('../../config/currencies')
 
 class DomainService {
-  /**
-   * Create a new domain
-   */
+
   async createDomain (options) {
     const { domain, ownerEmail, displayName, isDefault = false } = options
 
-    // Normalize domain (lowercase, no trailing slash)
-    const normalizedDomain = domain.toLowerCase().replace(/\/+$/, '')
+    const normalizedDomain = domain.toLowerCase()
+    .replace(/\/+$/, '')
+    .replace(/^www\./i)  // remove www. if it exists
 
-    // Basic validation
     if (!normalizedDomain || normalizedDomain.length === 0) {
       throw new Error('Domain is required')
     }
 
-    // Check if domain already exists
     const existing = await this.getDomainByName(normalizedDomain)
     if (existing) {
       throw new Error(`Domain "${normalizedDomain}" already exists`)
@@ -30,7 +28,33 @@ class DomainService {
       is_active: true,
       is_default: isDefault,
       created_at: new Date(),
-      updated_at: new Date()
+      updated_at: new Date(), 
+      currency_settings : {
+        BTC : {
+          active: true,
+          ...CURRENCIES.BTC.defaultLimits
+        },
+        USDT_POLYGON : {
+          active:true,
+          ...CURRENCIES.BTC.defaultLimits
+        },
+        USDT_SOLANA : {
+          active:true,
+          ...CURRENCIES.BTC.defaultLimits
+        },
+        USDT_TRON : {
+          active:true,
+          ...CURRENCIES.BTC.defaultLimits
+        },
+        USDT_ETH : {
+          active:true,
+          ...CURRENCIES.BTC.defaultLimits
+        },
+        USD : {
+          active:true,
+          ...CURRENCIES.BTC.defaultLimits
+        }
+      },
     })
 
     const domainId = result.insertedId
@@ -42,17 +66,11 @@ class DomainService {
     }
   }
 
-  /**
-   * Get domain by ID
-   */
   async getDomainById (id) {
     const db = await getDatabase()
     return await db.collection('domains').findOne({ _id: id })
   }
 
-  /**
-   * Get domain by domain name
-   */
   async getDomainByName (domain) {
     const normalizedDomain = domain.toLowerCase().replace(/\/+$/, '')
     const db = await getDatabase()
@@ -82,19 +100,11 @@ class DomainService {
     return await this.getDomainById(id)
   }
 
-  /**
-   * Delete domain
-   */
   async deleteDomain (id) {
     const db = await getDatabase()
 
-    // Delete domain
     await db.collection('domains').deleteOne({ _id: id })
-
-    // Delete all users for this domain
     await db.collection('users').deleteMany({ domain_id: id })
-
-    // Delete all chain addresses for users in this domain
     const users = await db.collection('users').find({ domain_id: id }).toArray()
     const userIds = users.map(u => u._id)
 
@@ -111,17 +121,11 @@ class DomainService {
     return true
   }
 
-  /**
-   * Get default domain (for backwards compatibility)
-   */
   async getDefaultDomain () {
     const db = await getDatabase()
     return await db.collection('domains').findOne({ is_default: true, is_active: true })
   }
 
-  /**
-   * List all domains
-   */
   async getAllDomains () {
     const db = await getDatabase()
     return await db.collection('domains').find({}).sort({ created_at: -1 }).toArray()

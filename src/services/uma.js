@@ -1,7 +1,10 @@
 const { userService } = require('./users')
 const { paymentService } = require('./payments')
 const { domainService } = require('./domains')
+const { marketRates } = require('./market-rates')
 const { SparkWallet } = require('@buildonspark/spark-sdk')
+const CHAIN_MAPPING = require('../../config/chain-mapping')
+const CURRENCIES = require('../../config/currencies')
 
 /**
  * @typedef {Object} UmaLookupContext
@@ -16,25 +19,20 @@ class UmaService {
   /**
    * Convert chain addresses to UMA-compliant settlement options
    * Creates identifiers like USDT_POLYGON, USDT_SOLANA, etc.
+   *
+   * Per UMA spec (Settlement.d.ts):
+   * - multipliers: "Estimated conversion rates from this asset to the currencies supported by
+   *   the receiver. The key is the currency code and the value is the multiplier
+   *   (how many of the smallest unit of this asset equals one unit of the currency)."
+   *
+   * @param {Object} chains - User's chain addresses
+   * @param {string[]} currencies - List of currency codes the user accepts (e.g., ['USD', 'EUR'])
    */
-  buildSettlementOptions (chains) {
+  async buildSettlementOptions (chains, currencies) {
     const settlementOptions = []
 
-    // Map of chain names (from database) to settlement layers and default assets
-    const chainMapping = {
-      spark: { layer: 'spark', asset: 'BTC' },
-      lightning: { layer: 'ln', asset: 'BTC' },
-      ethereum: { layer: 'ethereum', asset: 'USDT' },
-      polygon: { layer: 'polygon', asset: 'USDT' },
-      arbitrum: { layer: 'arbitrum', asset: 'USDT' },
-      optimism: { layer: 'optimism', asset: 'USDT' },
-      base: { layer: 'base', asset: 'USDT' },
-      solana: { layer: 'solana', asset: 'USDT' },
-      plasma: { layer: 'plasma', asset: 'USDT' }
-    }
-
     for (const [chainName, chainData] of Object.entries(chains)) {
-      const mapping = chainMapping[chainName.toLowerCase()]
+      const mapping = CHAIN_MAPPING[chainName.toLowerCase()]
       if (!mapping) {
         console.warn(`Unknown chain: ${chainName}, skipping...`)
         continue
@@ -42,23 +40,10 @@ class UmaService {
 
       const { layer, asset } = mapping
 
-      // For Spark, use the pubkey as identifier
-      // For other chains, use ASSET_CHAIN format
       const identifier =
         layer === 'spark' ? chainData.address || chainData : `${asset}_${layer.toUpperCase()}`
 
-      // Calculate multipliers based on asset type
-      const multipliers = {}
-
-      if (asset === 'USDT') {
-        // USDT has 6 decimals: 1 USDT = 1,000,000 micro-USDT
-        multipliers.USD = 10000 // micro-USDT per cent
-        multipliers.SAT = 1000 // micro-USDT per sat
-      } else if (asset === 'BTC') {
-        // BTC in millisats: 1 BTC = 100,000,000,000 msats
-        multipliers.USD = 10000 // msats per cent (at $100k/BTC)
-        multipliers.SAT = 1000 // msats per sat
-      }
+      const multipliers = await marketRates.calculateMultipliers(asset, currencies)
 
       settlementOptions.push({
         settlementLayer: layer,
@@ -72,6 +57,54 @@ class UmaService {
     }
 
     return settlementOptions
+  }
+
+  /**
+   * Build currencies array from domain settings and config
+   * Combines base currency info from config/currencies.js with domain-specific settings
+   */
+  async buildCurrencies (currencySettings) {
+    const currencies = []
+
+    if (!currencySettings) {
+      return currencies
+    }
+
+    for (const [code, settings] of Object.entries(currencySettings)) {
+      if (!settings.active) {
+        continue
+      }
+
+      const baseConfig = CURRENCIES[code]
+      if (!baseConfig) {
+        console.warn(`Unknown currency code: ${code}, skipping...`)
+        continue
+      }
+
+      // For currencies, we calculate how many msats (BTC smallest unit) equal one smallest unit of this currency
+      // calculateMultipliers(asset, currencies) - asset is what we're settling in (BTC), currencies is what we want multipliers for
+      const multipliers = await marketRates.calculateMultipliers('BTC', [code])
+      const multiplier = multipliers[code]
+
+      if (!multiplier) {
+        console.warn(`No multiplier available for ${code}, skipping...`)
+        continue
+      }
+
+      currencies.push({
+        code: baseConfig.code,
+        name: baseConfig.name,
+        symbol: baseConfig.symbol,
+        decimals: baseConfig.decimals,
+        convertible: {
+          min: settings.minSendable,
+          max: settings.maxSendable
+        },
+        multiplier
+      })
+    }
+
+    return currencies
   }
 
   /**
@@ -128,32 +161,22 @@ class UmaService {
    * Multi-tenant aware: looks up user in the specified domain
    */
   async generateLookupResponse (username, domain) {
-    // Find user in the specified domain
     const user = await userService.getUserByUsernameAndDomain(username, domain._id)
     if (!user) {
       return null
     }
 
-    // Get user's multi-chain addresses
     const chains = user._id ? await userService.getFormattedAddresses(user._id) : {}
 
-    // Convert to UMA-compliant settlement options
-    const settlementOptions = this.buildSettlementOptions(chains)
+    // Get active currency codes from domain settings
+    const activeCurrencyCodes = Object.entries(domain.currency_settings || {})
+      .filter(([_, settings]) => settings.active)
+      .map(([code]) => code)
 
-    // Define supported currencies
-    const currencies = [
-      {
-        code: 'USD',
-        name: 'US Dollar',
-        symbol: '$',
-        decimals: 2,
-        minSendable: 1,
-        maxSendable: 100000,
-        multiplier: 10000
-      }
-    ]
+    const settlementOptions = await this.buildSettlementOptions(chains, activeCurrencyCodes)
+    const currencies = await this.buildCurrencies(domain.currency_settings)
+    const btcSettings = domain.currency_settings.BTC
 
-    // Define payer data requirements
     const payerData = {
       name: { mandatory: false },
       email: { mandatory: false },
@@ -166,8 +189,8 @@ class UmaService {
     const response = {
       tag: 'payRequest',
       callback: `${baseUrl}/.well-known/lnurlp/${username}`,
-      minSendable: 1000,
-      maxSendable: 100000000,
+      minSendable: btcSettings.minSendable,
+      maxSendable: btcSettings.maxSendable,
       metadata: JSON.stringify([
         ['text/plain', `Pay to ${user.display_name || username}`],
         ['text/identifier', `${username}@${domain.domain}`]
@@ -268,10 +291,36 @@ class UmaService {
       console.log(`Payment request using settlement: ${assetIdentifier} on ${settlementLayer}`)
     }
 
+    // Calculate converted field per UMA spec
+    // Formula: invoiceAmount = (amount × multiplier) + fee
+    // Solving for amount: amount = (invoiceAmount - fee) / multiplier
+    const receiverFees = 0 // No receiver fees for now
+    const currencyCode = currency || 'USD'
+    const decimals = currencyCode === 'USD' ? 2 : 2 // Default to 2 decimals
+
+    // Determine the settlement asset based on settlement layer
+    const asset = (!settlementLayer || settlementLayer === 'ln' || settlementLayer === 'spark')
+      ? 'BTC'
+      : 'USDT'
+
+    // Get multiplier for the asset - how many smallest units of asset per smallest unit of currency
+    const multipliers = await marketRates.calculateMultipliers(asset, [currencyCode])
+    const multiplier = multipliers[currencyCode] 
+    // Calculate amount in currency units (e.g., cents)
+    // amount = (invoiceAmount - fee) / multiplier
+    const amountInCurrencyUnits = Math.round((amountMsats - receiverFees) / multiplier)
+
     const response = {
       pr: paymentRequest,
       routes: [],
       settlement: settlementInfo,
+      converted: {
+        amount: amountInCurrencyUnits,
+        currencyCode,
+        decimals,
+        multiplier,
+        fee: receiverFees
+      },
       disposable: false,
       successAction: {
         tag: 'message',

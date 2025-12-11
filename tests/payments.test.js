@@ -6,6 +6,9 @@ const { paymentService } = require('../src/services/payments')
 const { userService } = require('../src/services/users')
 const { domainService } = require('../src/services/domains')
 
+// Generate unique nonces per test run to avoid conflicts with previous runs
+const testRunId = Date.now()
+
 test('createPaymentRequest creates payment request successfully', async (t) => {
   try {
     await initializeDatabase()
@@ -24,9 +27,10 @@ test('createPaymentRequest creates payment request successfully', async (t) => {
       displayName: 'Test User'
     })
 
+    const nonce = `test-nonce-1-${testRunId}`
     const paymentId = await paymentService.createPaymentRequest(
       userResult._id,
-      'test-nonce-1',
+      nonce,
       10000, // 10 sats
       'USD',
       'polygon',
@@ -38,7 +42,7 @@ test('createPaymentRequest creates payment request successfully', async (t) => {
     t.ok(paymentId, 'Payment request should be created with an ID')
 
     // Verify it was created
-    const payment = await paymentService.getPaymentRequestByNonce('test-nonce-1')
+    const payment = await paymentService.getPaymentRequestByNonce(nonce)
     t.ok(payment, 'Payment should be retrievable by nonce')
     t.is(payment.user_id.toString(), userResult._id.toString(), 'User ID should match')
     t.is(payment.amount_msats, 10000, 'Amount should match')
@@ -68,7 +72,7 @@ test('createPaymentRequest handles duplicate nonce', async (t) => {
       displayName: 'Test User'
     })
 
-    const nonce = 'duplicate-nonce-test'
+    const nonce = `duplicate-nonce-test-${testRunId}`
 
     // Create first payment
     const firstPaymentId = await paymentService.createPaymentRequest(
@@ -122,7 +126,7 @@ test('getPaymentRequestByNonce retrieves payment correctly', async (t) => {
       displayName: 'Test User'
     })
 
-    const nonce = 'get-by-nonce-test'
+    const nonce = `get-by-nonce-test-${testRunId}`
     await paymentService.createPaymentRequest(
       userResult._id,
       nonce,
@@ -181,9 +185,10 @@ test('getPaymentRequestsByUserId retrieves user payments', async (t) => {
     // Create multiple payments for the user
     const payments = []
     for (let i = 0; i < 3; i++) {
+      const nonce = `user-payment-${i}-${testRunId}`
       const paymentId = await paymentService.createPaymentRequest(
         userResult._id,
-        `user-payment-${i}`,
+        nonce,
         1000 * (i + 1),
         'USD',
         'polygon',
@@ -191,7 +196,7 @@ test('getPaymentRequestsByUserId retrieves user payments', async (t) => {
         `0xaddress${i}`,
         3600
       )
-      payments.push({ id: paymentId, nonce: `user-payment-${i}`, amount: 1000 * (i + 1) })
+      payments.push({ id: paymentId, nonce, amount: 1000 * (i + 1) })
     }
 
     const userPayments = await paymentService.getPaymentRequestsByUserId(userResult._id)
@@ -229,9 +234,10 @@ test('updatePaymentStatus updates payment status', async (t) => {
       displayName: 'Test User'
     })
 
+    const nonce = `status-test-nonce-${testRunId}`
     const paymentId = await paymentService.createPaymentRequest(
       userResult._id,
-      'status-test-nonce',
+      nonce,
       5000,
       'USD',
       'polygon',
@@ -244,7 +250,7 @@ test('updatePaymentStatus updates payment status', async (t) => {
     await paymentService.updatePaymentStatus(paymentId, 'completed')
 
     // Verify status was updated
-    const payment = await paymentService.getPaymentRequestByNonce('status-test-nonce')
+    const payment = await paymentService.getPaymentRequestByNonce(nonce)
     t.is(payment.status, 'completed', 'Status should be updated to completed')
 
     t.pass('Payment status update works')
@@ -267,8 +273,8 @@ test('isPaymentExpired detects expired payments', async (t) => {
   }
 
   t.ok(paymentService.isPaymentExpired(expiredPayment), 'Expired payment should be detected as expired')
-  t.notOk(paymentService.isPaymentExpired(activePayment), 'Active payment should not be expired')
-  t.notOk(paymentService.isPaymentExpired(paymentWithoutExpiry), 'Payment without expiry should not be expired')
+  t.ok(!paymentService.isPaymentExpired(activePayment), 'Active payment should not be expired')
+  t.ok(!paymentService.isPaymentExpired(paymentWithoutExpiry), 'Payment without expiry should not be expired')
 
   t.pass('Payment expiration detection works')
 })
