@@ -19,6 +19,7 @@ const TEST_PRICES = {
 
 // Hardcoded test multipliers - used when TEST_MODE=true
 const TEST_MULTIPLIERS = {
+  USD: { USD: 10000 }, // ~$100k/BTC: 1 cent = 10,000 msats
   USDT: { USD: 10000 }, // 1 cent = 10,000 micro-USDT (6 decimals)
   BTC: { USD: 10000 } // ~$100k/BTC: 1 cent = 10,000 msats
 }
@@ -142,9 +143,12 @@ class MarketRates {
    * Note: "one unit of the currency" means the smallest unit (e.g., cents for USD)
    *
    * @param {string} asset - Settlement asset (BTC, USDT, etc.)
+   * @param {string[]} currencies - Array of currency codes to calculate multipliers for (e.g., ['USD', 'EUR'])
    * @returns {Promise<Record<string, number>>} Multipliers by currency code
    */
-  async calculateMultipliers (asset) {
+  async calculateMultipliers (asset, currencies = ['USD']) {
+    const multipliers = {}
+
     // In test mode, return hardcoded multipliers
     if (this.isTestMode()) {
       const testMultiplier = TEST_MULTIPLIERS[asset]
@@ -154,25 +158,22 @@ class MarketRates {
       return {}
     }
 
-    const multipliers = {}
-
-    if (asset === 'USDT') {
-      // USDT has 6 decimals: 1 USDT = 1,000,000 micro-USDT
-      // Assuming 1:1 USD peg: 1 USD cent = 0.01 USDT = 10,000 micro-USDT
-      multipliers.USD = 10000
-    } else if (asset === 'BTC') {
-      // BTC in millisats: 1 BTC = 100,000,000 sats = 100,000,000,000 msats
-      // Formula: msats per cent = msats_per_btc / cents_per_btc
-      try {
-        const btcPriceUsd = await this.getBtcUsdPrice()
-        const centsPerBtc = btcPriceUsd * 100
-        const msatsPerBtc = 100000000000 // 100 billion msats per BTC
-        multipliers.USD = Math.round(msatsPerBtc / centsPerBtc)
-      } catch (error) {
-        // Fallback to approximate value if API fails
-        console.warn('Using fallback BTC price for multiplier calculation')
-        multipliers.USD = 10000 // ~$100k/BTC
+    for (const currency of currencies) {
+      if (currency === 'USD') {
+        if (asset === 'USDT') {
+          // USDT has 6 decimals: 1 USDT = 1,000,000 micro-USDT
+          // Assuming 1:1 USD peg: 1 USD cent = 0.01 USDT = 10,000 micro-USDT
+          multipliers.USD = 10000
+        } else if (asset === 'BTC') {
+          // BTC in millisats: 1 BTC = 100,000,000 sats = 100,000,000,000 msats
+          // Formula: msats per cent = msats_per_btc / cents_per_btc
+          const btcPriceUsd = await this.getBtcUsdPrice()
+          const centsPerBtc = btcPriceUsd * 100
+          const msatsPerBtc = 100000000000 // 100 billion msats per BTC
+          multipliers.USD = Math.round(msatsPerBtc / centsPerBtc)
+        }
       }
+      // Add support for other currencies here (EUR, GBP, etc.)
     }
 
     return multipliers
