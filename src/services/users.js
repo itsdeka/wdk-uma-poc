@@ -29,6 +29,7 @@ const CHAIN_MAPPING = require('../../config/chain-mapping')
  */
 
 class UserService {
+
   /**
    * Get user by username (legacy - searches all domains)
    * For multi-tenant usage, prefer getUserByUsernameAndDomain
@@ -136,11 +137,9 @@ class UserService {
       domain_id: domainId,
       action: 'user_created',
       actor_type: 'domain_admin',
-      actor_id: null,
       target_type: 'user',
       target_id: userId.toString(),
       details: JSON.stringify({ username, hasAddresses: !!addresses }),
-      ip_address: null,
       created_at: new Date()
     })
 
@@ -159,12 +158,10 @@ class UserService {
     const db = await getDatabase()
     const updateData = { updated_at: new Date() }
 
-    // Update display name if provided
     if (options.displayName !== undefined) {
       updateData.display_name = options.displayName
     }
 
-    // Update addresses if provided
     if (options.addresses) {
       for (const [chainName, address] of Object.entries(options.addresses)) {
         if (address === null || address === '') {
@@ -202,11 +199,9 @@ class UserService {
       domain_id: user.domain_id,
       action: 'user_updated',
       actor_type: 'domain_admin',
-      actor_id: null,
       target_type: 'user',
       target_id: userId.toString(),
       details: JSON.stringify(options),
-      ip_address: null,
       created_at: new Date()
     })
 
@@ -229,11 +224,9 @@ class UserService {
       domain_id: user.domain_id,
       action: 'user_deleted',
       actor_type: 'domain_admin',
-      actor_id: null,
       target_type: 'user',
       target_id: userId.toString(),
       details: JSON.stringify({ username: user.username }),
-      ip_address: null,
       created_at: new Date()
     })
 
@@ -260,11 +253,9 @@ class UserService {
       domain_id: user.domain_id,
       action: 'user_deactivated',
       actor_type: 'domain_admin',
-      actor_id: null,
       target_type: 'user',
       target_id: userId.toString(),
       details: JSON.stringify({ username: user.username }),
-      ip_address: null,
       created_at: new Date()
     })
   }
@@ -289,11 +280,9 @@ class UserService {
       domain_id: user.domain_id,
       action: 'user_activated',
       actor_type: 'domain_admin',
-      actor_id: null,
       target_type: 'user',
       target_id: userId.toString(),
       details: JSON.stringify({ username: user.username }),
-      ip_address: null,
       created_at: new Date()
     })
   }
