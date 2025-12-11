@@ -1,4 +1,5 @@
 const { getDatabase } = require('../db/database')
+const CHAIN_MAPPING = require('../../config/chain-mapping')
 
 /**
  * @typedef {Object} CreateUserOptions
@@ -28,17 +29,6 @@ const { getDatabase } = require('../db/database')
  */
 
 class UserService {
-  constructor () {
-    // Chain ID mapping for EVM chains
-    this.chainIdMap = {
-      ethereum: 1,
-      polygon: 137,
-      arbitrum: 42161,
-      optimism: 10,
-      base: 8453
-    }
-  }
-
   /**
    * Get user by username (legacy - searches all domains)
    * For multi-tenant usage, prefer getUserByUsernameAndDomain
@@ -361,9 +351,10 @@ class UserService {
     const formatted = {}
 
     for (const addr of addresses) {
+      const chainId = CHAIN_MAPPING[addr.chain_name].chainId
       formatted[addr.chain_name] = {
         address: addr.address,
-        ...(this.chainIdMap[addr.chain_name] && { chainId: this.chainIdMap[addr.chain_name] })
+        ...(chainId && { chainId })
       }
     }
 
@@ -376,18 +367,7 @@ class UserService {
   async enrichUserWithAddresses (user) {
     const addresses = user._id ? await this.getFormattedAddresses(user._id) : {}
     const settlementOptions = Object.keys(addresses).map(chain => {
-      // Map chain names to settlement layer identifiers
-      const layerMap = {
-        spark: 'spark',
-        lightning: 'ln',
-        ethereum: 'ethereum',
-        polygon: 'polygon',
-        arbitrum: 'arbitrum',
-        optimism: 'optimism',
-        base: 'base',
-        solana: 'solana'
-      }
-      return layerMap[chain] || chain
+      return CHAIN_MAPPING[chain].layer 
     })
 
     return {
