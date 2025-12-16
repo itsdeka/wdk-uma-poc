@@ -134,19 +134,43 @@ GET /.well-known/lnurlp/{username}?amount=1000&nonce=optional&settlementLayer=po
 
 ```http
 # Domain management
-POST /api/admin/domains                    # Create domain
-GET  /api/admin/domains                    # List domains
-GET  /api/admin/domains/{domainId}         # Get domain details
-DELETE /api/admin/domains/{domainId}       # Delete domain
+POST   /api/admin/domains                              # Create domain
+GET    /api/admin/domain/{domainId}                    # Get domain details
+DELETE /api/admin/domain/{domainId}                    # Delete domain
+PATCH  /api/admin/domain/{domainId}/currency/{code}   # Update currency settings
 
 # User management
-GET  /api/admin/users/{domainId}           # List domain users
-POST /api/admin/users/{domainId}           # Create user
-DELETE /api/admin/users/{domainId}/{username}  # Delete user
+GET    /api/admin/users/{domainId}                     # List domain users
+POST   /api/admin/users/{domainId}                     # Create user
+DELETE /api/admin/users/{domainId}/{username}          # Delete user
 
 # Service endpoints
-GET  /health                               # Health check
-GET  /                                     # API information
+GET  /health                                           # Health check
+GET  /                                                 # API information
+```
+
+#### Update Currency Settings
+
+Update currency settings (activation status, limits) for a domain:
+
+```bash
+# Deactivate a currency
+curl -X PATCH http://localhost:3000/api/admin/domain/{domainId}/currency/USDT_POLYGON \
+  -H "Authorization: Bearer {API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"active": false}'
+
+# Update limits
+curl -X PATCH http://localhost:3000/api/admin/domain/{domainId}/currency/BTC \
+  -H "Authorization: Bearer {API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"minSendable": 5000, "maxSendable": 50000000}'
+
+# Update both
+curl -X PATCH http://localhost:3000/api/admin/domain/{domainId}/currency/USD \
+  -H "Authorization: Bearer {API_KEY}" \
+  -H "Content-Type: application/json" \
+  -d '{"active": true, "minSendable": 100, "maxSendable": 10000}'
 ```
 
 ## 🔗 Integration Guide

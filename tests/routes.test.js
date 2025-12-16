@@ -1,7 +1,7 @@
 const path = require('path')
 require('dotenv').config({ path: path.resolve(__dirname, '../.env') })
 const { test } = require('brittle')
-const { initializeDatabase } = require('../src/db/database')
+const { initializeDatabase, closeDatabase } = require('../src/db/database')
 const { userService } = require('../src/services/users')
 const { domainService } = require('../src/services/domains')
 
@@ -84,16 +84,16 @@ test('POST /users/:domainId validates required fields', async (t) => {
       isDefault: false
     })
 
-    // Test missing username
+    // Test empty username
     try {
       await userService.createUser({
+        username: '',
         domainId: domainResult.domain._id,
         displayName: 'Test User'
-        // missing username
       })
       t.fail('Should require username')
     } catch (error) {
-      t.ok(error.message.includes('Invalid username format') || error.message.includes('required'), 'Should validate required fields')
+      t.ok(error.message.includes('Invalid username format'), 'Should validate required fields')
     }
 
     t.pass('Field validation works')
@@ -147,7 +147,7 @@ test('GET /users/:domainId lists users for domain', async (t) => {
     }
 
     // Test the underlying service that would be used by the route
-    const users = await userService.listUsersByDomain(domainResult.domain._id)
+    const users = await userService.getUsersByDomain(domainResult.domain._id)
 
     t.ok(Array.isArray(users), 'Should return array of users')
     t.ok(users.length >= 2, 'Should return at least the created users')
@@ -206,7 +206,7 @@ test('GET /domains lists all domains', async (t) => {
     })
 
     // Test the underlying service
-    const domains = await domainService.listDomains()
+    const domains = await domainService.getAllDomains()
 
     t.ok(Array.isArray(domains), 'Should return array of domains')
     t.ok(domains.length >= 1, 'Should return at least one domain')
@@ -270,4 +270,9 @@ test('DELETE /domains/:domainId deletes domain', async (t) => {
   } catch (error) {
     t.fail(`Domain deletion test failed: ${error.message}`)
   }
+})
+
+test('cleanup - close database connection', async (t) => {
+  await closeDatabase()
+  t.pass('Database connection closed')
 })
