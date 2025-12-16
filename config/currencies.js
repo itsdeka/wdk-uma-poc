@@ -1,4 +1,6 @@
 
+const VALID_DOMAIN_CURRENCIES = ['BTC', 'USDT_POLYGON', 'USDT_SOLANA', 'USDT_TRON', 'USDT_ETH', 'USD']
+
 const currencies = {
   USD: {
     code: 'USD',
@@ -34,3 +36,4 @@ const currencies = {
 }
 
 module.exports = currencies
+module.exports.VALID_DOMAIN_CURRENCIES = VALID_DOMAIN_CURRENCIES

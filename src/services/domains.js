@@ -1,14 +1,18 @@
-const { getDatabase } = require('../db/database')
+const { DomainModel } = require('../models/domains')
 const CURRENCIES = require('../../config/currencies')
+const { VALID_DOMAIN_CURRENCIES } = require('../../config/currencies')
 
 class DomainService {
+  constructor () {
+    this.model = new DomainModel()
+  }
 
   async createDomain (options) {
     const { domain, ownerEmail, displayName, isDefault = false } = options
 
     const normalizedDomain = domain.toLowerCase()
-    .replace(/\/+$/, '')
-    .replace(/^www\./i)  // remove www. if it exists
+      .replace(/\/+$/, '')
+      .replace(/^www\./i, '')
 
     if (!normalizedDomain || normalizedDomain.length === 0) {
       throw new Error('Domain is required')
@@ -19,45 +23,40 @@ class DomainService {
       throw new Error(`Domain "${normalizedDomain}" already exists`)
     }
 
-    const db = await getDatabase()
-
-    const result = await db.collection('domains').insertOne({
+    const domainId = await this.model.insert({
       domain: normalizedDomain,
       owner_email: ownerEmail ? ownerEmail.toLowerCase() : null,
       display_name: displayName || normalizedDomain,
       is_active: true,
       is_default: isDefault,
-      created_at: new Date(),
-      updated_at: new Date(), 
-      currency_settings : {
-        BTC : {
+      currency_settings: {
+        BTC: {
           active: true,
           ...CURRENCIES.BTC.defaultLimits
         },
-        USDT_POLYGON : {
-          active:true,
+        USDT_POLYGON: {
+          active: true,
           ...CURRENCIES.BTC.defaultLimits
         },
-        USDT_SOLANA : {
-          active:true,
+        USDT_SOLANA: {
+          active: true,
           ...CURRENCIES.BTC.defaultLimits
         },
-        USDT_TRON : {
-          active:true,
+        USDT_TRON: {
+          active: true,
           ...CURRENCIES.BTC.defaultLimits
         },
-        USDT_ETH : {
-          active:true,
+        USDT_ETH: {
+          active: true,
           ...CURRENCIES.BTC.defaultLimits
         },
-        USD : {
-          active:true,
+        USD: {
+          active: true,
           ...CURRENCIES.BTC.defaultLimits
         }
-      },
+      }
     })
 
-    const domainId = result.insertedId
     const createdDomain = await this.getDomainById(domainId)
 
     return {
@@ -66,32 +65,17 @@ class DomainService {
     }
   }
 
-  async getDomainById (id) {
-    const db = await getDatabase()
-    return await db.collection('domains').findOne({ _id: id })
+  async getDomainById (id, includeDeleted = false) {
+    return await this.model.findById(id, includeDeleted)
   }
 
-  async getDomainByName (domain) {
+  async getDomainByName (domain, includeDeleted = false) {
     const normalizedDomain = domain.toLowerCase().replace(/\/+$/, '')
-    const db = await getDatabase()
-    return await db.collection('domains').findOne({ domain: normalizedDomain })
+    return await this.model.findByName(normalizedDomain, includeDeleted)
   }
 
-  /**
-   * Update domain
-   */
   async updateDomain (id, updates) {
-    const db = await getDatabase()
-
-    const result = await db.collection('domains').updateOne(
-      { _id: id },
-      {
-        $set: {
-          ...updates,
-          updated_at: new Date()
-        }
-      }
-    )
+    const result = await this.model.update(id, updates)
 
     if (result.modifiedCount === 0) {
       throw new Error('Domain not found or no changes made')
@@ -101,34 +85,67 @@ class DomainService {
   }
 
   async deleteDomain (id) {
-    const db = await getDatabase()
+    const result = await this.model.softDelete(id)
 
-    await db.collection('domains').deleteOne({ _id: id })
-    await db.collection('users').deleteMany({ domain_id: id })
-    const users = await db.collection('users').find({ domain_id: id }).toArray()
-    const userIds = users.map(u => u._id)
-
-    if (userIds.length > 0) {
-      await db.collection('chain_addresses').deleteMany({
-        user_id: { $in: userIds }
-      })
-
-      await db.collection('payment_requests').deleteMany({
-        user_id: { $in: userIds }
-      })
+    if (result.modifiedCount === 0) {
+      throw new Error('Domain not found or already deleted')
     }
+
+    await this.model.softDeleteUsersByDomain(id)
 
     return true
   }
 
   async getDefaultDomain () {
-    const db = await getDatabase()
-    return await db.collection('domains').findOne({ is_default: true, is_active: true })
+    return await this.model.findDefault()
   }
 
-  async getAllDomains () {
-    const db = await getDatabase()
-    return await db.collection('domains').find({}).sort({ created_at: -1 }).toArray()
+  async getAllDomains (includeDeleted = false) {
+    return await this.model.findAll(includeDeleted)
+  }
+
+  async updateCurrencySettings (domainId, currencyCode, options) {
+    if (!VALID_DOMAIN_CURRENCIES.includes(currencyCode)) {
+      throw new Error(`Invalid currency code "${currencyCode}". Valid codes: ${VALID_DOMAIN_CURRENCIES.join(', ')}`)
+    }
+
+    const domain = await this.getDomainById(domainId)
+    if (!domain) {
+      throw new Error('Domain not found')
+    }
+
+    const currentSettings = domain.currency_settings?.[currencyCode] || {}
+    const updatedSettings = { ...currentSettings }
+
+    if (options.active !== undefined) {
+      updatedSettings.active = Boolean(options.active)
+    }
+
+    if (options.minSendable !== undefined) {
+      if (typeof options.minSendable !== 'number' || options.minSendable < 0) {
+        throw new Error('minSendable must be a non-negative number')
+      }
+      updatedSettings.minSendable = options.minSendable
+    }
+
+    if (options.maxSendable !== undefined) {
+      if (typeof options.maxSendable !== 'number' || options.maxSendable < 0) {
+        throw new Error('maxSendable must be a non-negative number')
+      }
+      updatedSettings.maxSendable = options.maxSendable
+    }
+
+    if (updatedSettings.minSendable > updatedSettings.maxSendable) {
+      throw new Error('minSendable cannot be greater than maxSendable')
+    }
+
+    const result = await this.model.updateCurrencySettings(domainId, currencyCode, updatedSettings)
+
+    if (result.modifiedCount === 0) {
+      throw new Error('Failed to update currency settings')
+    }
+
+    return await this.getDomainById(domainId)
   }
 }
 

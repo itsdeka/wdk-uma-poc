@@ -4,7 +4,7 @@ const test = require('brittle')
 const { userService } = require('../src/services/users')
 const { umaService } = require('../src/services/uma')
 const { domainService } = require('../src/services/domains')
-const { initializeDatabase, getDatabase } = require('../src/db/database')
+const { initializeDatabase, getDatabase, closeDatabase } = require('../src/db/database')
 
 let testDomain
 let testUser
@@ -154,7 +154,7 @@ test('Domain constraints - duplicate username', async (t) => {
   }
 })
 
-test('Cleanup', async (t) => {
-  t.comment('Test database preserved for inspection')
-  t.pass('Integration tests completed')
+test('cleanup - close database connection', async (t) => {
+  await closeDatabase()
+  t.pass('Database connection closed')
 })

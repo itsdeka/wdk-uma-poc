@@ -1,10 +1,13 @@
 const { userService } = require('./users')
 const { paymentService } = require('./payments')
-const { domainService } = require('./domains')
 const { marketRates } = require('./market-rates')
 const { SparkWallet } = require('@buildonspark/spark-sdk')
 const CHAIN_MAPPING = require('../../config/chain-mapping')
 const CURRENCIES = require('../../config/currencies')
+
+if (!process.env.SPARK_SEED) {
+  throw new Error('SPARK_SEED environment variable is not set')
+}
 
 /**
  * @typedef {Object} UmaLookupContext
@@ -32,12 +35,11 @@ class UmaService {
     const settlementOptions = []
 
     for (const [chainName, chainData] of Object.entries(chains)) {
-      const mapping = CHAIN_MAPPING[chainName.toLowerCase()]
+      const mapping = this._getChainMapping(chainName)
       if (!mapping) {
-        console.warn(`Unknown chain: ${chainName}, skipping...`)
+        // Skip unknown chains
         continue
       }
-
       const { layer, asset } = mapping
 
       const identifier =
@@ -59,6 +61,22 @@ class UmaService {
     return settlementOptions
   }
 
+  _getChainMapping(chainName) {
+    const mapping = CHAIN_MAPPING[chainName.toLowerCase()]
+    if (!mapping) {
+      return null
+    }
+    return mapping
+  }
+
+  _getCurrencyConfig(code) {
+    const baseConfig = CURRENCIES[code]
+    if (!baseConfig) {
+      throw new Error('currency is not valid')
+    }
+    return baseConfig
+  }
+
   /**
    * Build currencies array from domain settings and config
    * Combines base currency info from config/currencies.js with domain-specific settings
@@ -75,11 +93,7 @@ class UmaService {
         continue
       }
 
-      const baseConfig = CURRENCIES[code]
-      if (!baseConfig) {
-        console.warn(`Unknown currency code: ${code}, skipping...`)
-        continue
-      }
+      const baseConfig = this._getCurrencyConfig(code)
 
       // For currencies, we calculate how many msats (BTC smallest unit) equal one smallest unit of this currency
       // calculateMultipliers(asset, currencies) - asset is what we're settling in (BTC), currencies is what we want multipliers for
@@ -210,27 +224,22 @@ class UmaService {
    * Multi-tenant aware
    */
   async generatePayResponse (username, domain, amountMsats, nonce, currency, settlementLayer, assetIdentifier) {
-    // Find user in the specified domain
     const user = await userService.getUserByUsernameAndDomain(username, domain._id)
     if (!user || !user._id) {
       return null
     }
 
-    // Get user's multi-chain addresses
     const userAddresses = await userService.getUserAddresses(user._id)
 
-    // Check if nonce already exists (replay attack prevention)
     const existingPayment = await paymentService.getPaymentRequestByNonce(nonce)
     if (existingPayment) {
       console.warn(`Duplicate payment request with nonce: ${nonce}`)
       throw new Error('DUPLICATE_NONCE')
     }
 
-    // Determine the payment request field (pr) based on settlement layer
     let paymentRequest
 
     if (settlementLayer && settlementLayer !== 'ln' && settlementLayer !== 'spark') {
-      // For non-Lightning settlement layers
       const selectedAddress = userAddresses.find(
         addr => addr.chain_name.toLowerCase() === settlementLayer.toLowerCase()
       )
@@ -254,7 +263,6 @@ class UmaService {
       )
     }
 
-    // Store payment request
     const paymentId = await paymentService.createPaymentRequest(
       user._id,
       nonce,
@@ -282,7 +290,7 @@ class UmaService {
 
     const receiverFees = 0
     const currencyCode = currency || 'USD'
-    const decimals = CURRENCIES[currencyCode]?.decimals
+    const decimals = this._getCurrencyConfig(currencyCode).decimals
 
     const asset = (!settlementLayer || settlementLayer === 'ln' || settlementLayer === 'spark')
       ? 'BTC'
@@ -321,7 +329,6 @@ class UmaService {
    * Generate Lightning invoice using Spark SDK
    */
   async generateLightningInvoice (amountMsats, description, receiverSparkPubkey) {
-    // Remove 0x prefix if present
     if (receiverSparkPubkey && receiverSparkPubkey.startsWith('0x')) {
       receiverSparkPubkey = receiverSparkPubkey.slice(2)
     }

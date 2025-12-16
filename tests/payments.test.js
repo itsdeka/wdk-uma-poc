@@ -1,12 +1,11 @@
 const path = require('path')
 require('dotenv').config({ path: path.resolve(__dirname, '../.env') })
 const { test } = require('brittle')
-const { initializeDatabase } = require('../src/db/database')
+const { initializeDatabase, closeDatabase } = require('../src/db/database')
 const { paymentService } = require('../src/services/payments')
 const { userService } = require('../src/services/users')
 const { domainService } = require('../src/services/domains')
 
-// Generate unique nonces per test run to avoid conflicts with previous runs
 const testRunId = Date.now()
 
 test('createPaymentRequest creates payment request successfully', async (t) => {
@@ -277,4 +276,9 @@ test('isPaymentExpired detects expired payments', async (t) => {
   t.ok(!paymentService.isPaymentExpired(paymentWithoutExpiry), 'Payment without expiry should not be expired')
 
   t.pass('Payment expiration detection works')
+})
+
+test('cleanup - close database connection', async (t) => {
+  await closeDatabase()
+  t.pass('Database connection closed')
 })
