@@ -493,6 +493,124 @@ async function adminRoutes (fastify, options) {
   })
 
   /**
+   * PATCH /api/admin/domain/:domainId/currency/:currencyCode
+   * Update currency settings for a domain
+   */
+  fastify.patch('/domain/:domainId/currency/:currencyCode', {
+    preHandler: authenticateAdmin,
+    schema: {
+      description: 'Update currency settings for a domain',
+      tags: ['Admin'],
+      params: {
+        type: 'object',
+        properties: {
+          domainId: {
+            type: 'string',
+            description: 'Domain ID'
+          },
+          currencyCode: {
+            type: 'string',
+            description: 'Currency code (BTC, USDT_POLYGON, USDT_SOLANA, USDT_TRON, USDT_ETH, USD)'
+          }
+        }
+      },
+      body: {
+        type: 'object',
+        properties: {
+          active: {
+            type: 'boolean',
+            description: 'Whether this currency is active for the domain'
+          },
+          minSendable: {
+            type: 'number',
+            description: 'Minimum sendable amount'
+          },
+          maxSendable: {
+            type: 'number',
+            description: 'Maximum sendable amount'
+          }
+        }
+      },
+      response: {
+        200: {
+          description: 'Currency settings updated successfully',
+          type: 'object',
+          properties: {
+            success: { type: 'boolean', example: true },
+            domain: { type: 'object' },
+            message: { type: 'string' }
+          }
+        },
+        400: {
+          description: 'Bad request - invalid currency code or settings',
+          type: 'object',
+          properties: {
+            error: { type: 'string', example: 'Bad Request' },
+            message: { type: 'string' }
+          }
+        },
+        404: {
+          description: 'Domain not found',
+          type: 'object',
+          properties: {
+            error: { type: 'string', example: 'Not Found' },
+            message: { type: 'string' }
+          }
+        }
+      }
+    }
+  }, async (req, reply) => {
+    try {
+      const { domainId, currencyCode } = req.params
+      const { active, minSendable, maxSendable } = req.body
+
+      const updatedDomain = await domainService.updateCurrencySettings(domainId, currencyCode, {
+        active,
+        minSendable,
+        maxSendable
+      })
+
+      reply.send({
+        success: true,
+        domain: {
+          id: updatedDomain._id,
+          domain: updatedDomain.domain,
+          currencySettings: updatedDomain.currency_settings
+        },
+        message: `Currency settings for ${currencyCode} updated successfully`
+      })
+    } catch (error) {
+      console.error('Error updating currency settings:', error)
+
+      if (error.message.includes('Invalid currency code')) {
+        return reply.status(400).send({
+          error: 'Bad Request',
+          message: error.message
+        })
+      }
+
+      if (error.message.includes('Domain not found')) {
+        return reply.status(404).send({
+          error: 'Not Found',
+          message: error.message
+        })
+      }
+
+      if (error.message.includes('must be') || error.message.includes('cannot be')) {
+        return reply.status(400).send({
+          error: 'Bad Request',
+          message: error.message
+        })
+      }
+
+      reply.status(500).send({
+        error: 'Internal Server Error',
+        message: error.message
+      })
+    }
+  })
+
+  /**
    * DELETE /api/admin/domain/:domainId
    * Delete a domain and all its users
    */

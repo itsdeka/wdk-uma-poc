@@ -65,8 +65,8 @@ fastify.get('/.well-known/lnurlp/:username', async (req, reply) => {
   try {
     // Case 1: Lookup request (no amount parameter)
     if (!amount) {
-      // Extract domain from request hostname
-      const requestDomain = req.hostname.toLowerCase()
+      // Extract domain from request hostname (strip port if present)
+      const requestDomain = req.hostname.toLowerCase().split(':')[0]
       const domain = await domainService.getDomainByName(requestDomain)
 
       if (!domain) {
@@ -100,8 +100,8 @@ fastify.get('/.well-known/lnurlp/:username', async (req, reply) => {
       })
     }
 
-    // Extract domain from request hostname
-    const requestDomain = req.hostname.toLowerCase()
+    // Extract domain from request hostname (strip port if present)
+    const requestDomain = req.hostname.toLowerCase().split(':')[0]
     const domain = await domainService.getDomainByName(requestDomain)
 
     if (!domain) {

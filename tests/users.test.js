@@ -90,7 +90,7 @@ test('createUser validates username format', async (t) => {
     const invalidUsernames = [
       'user with spaces',
       'user-with-dashes-and-spaces ',
-      'u', // too short
+      '', // too short
       'user_with_very_long_name_that_exceeds_the_limit_of_64_characters_1234567890' // too long
     ]
 
@@ -342,13 +342,14 @@ test('listUsersByDomain retrieves users for domain', async (t) => {
       users.push(user)
     }
 
-    const domainUsers = await userService.listUsersByDomain(domainResult.domain._id)
+    const domainUsers = await userService.getUsersByDomain(domainResult.domain._id)
 
     t.ok(Array.isArray(domainUsers), 'Should return an array')
     t.ok(domainUsers.length >= 3, 'Should return at least the created users')
 
     t.pass('Domain user listing works')
   } catch (error) {
+    console.log(error)
     t.fail(`Domain user listing failed: ${error.message}`)
   }
 })
@@ -579,9 +580,9 @@ test('isValidUsername validates username format', async (t) => {
   t.ok(userServiceInstance.isValidUsername('test-user'), 'Valid username with dash should pass')
   t.ok(userServiceInstance.isValidUsername('a'), 'Single character should pass')
 
-  t.notOk(userServiceInstance.isValidUsername(''), 'Empty string should fail')
-  t.notOk(userServiceInstance.isValidUsername('user with spaces'), 'Username with spaces should fail')
-  t.notOk(userServiceInstance.isValidUsername('user-with-very-long-name-that-exceeds-the-limit-of-sixty-four-characters-in-total-length'), 'Too long username should fail')
+  t.ok(!userServiceInstance.isValidUsername(''), 'Empty string should fail')
+  t.ok(!userServiceInstance.isValidUsername('user with spaces'), 'Username with spaces should fail')
+  t.ok(!userServiceInstance.isValidUsername('user-with-very-long-name-that-exceeds-the-limit-of-sixty-four-characters-in-total-length'), 'Too long username should fail')
 
   t.pass('Username validation works')
 })

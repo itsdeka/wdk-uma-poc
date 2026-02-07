@@ -97,6 +97,15 @@ function generateVerificationToken () {
   return `uma-verify-${crypto.randomBytes(16).toString('hex')}`
 }
 
+// Close database connection
+async function closeDatabase () {
+  if (client) {
+    await client.close()
+    client = null
+    db = null
+  }
+}
+
 // Log audit event
 async function logAuditEvent (auditData) {
   const db = await getDatabase()
@@ -110,6 +119,7 @@ async function logAuditEvent (auditData) {
 module.exports = {
   connectToDatabase,
   getDatabase,
+  closeDatabase,
   initializeDatabase,
   generateApiKey,
   generateVerificationToken,
